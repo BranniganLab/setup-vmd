@@ -1,0 +1,134 @@
+name: Set up VMD
+description: Restore a cached VMD installation or download and install VMD
+
+inputs:
+  github-app-id:
+    description: GitHub App client ID
+    required: true
+
+  github-app-private-key:
+    description: GitHub App private key
+    required: true
+
+  source-owner:
+    description: Owner of the repository containing the VMD tarball
+    required: false
+    default: BranniganLab
+
+  source-repository:
+    description: Repository containing the VMD tarball
+    required: false
+    default: vmd_for_testing
+
+  tarball-name:
+    description: Name of the VMD tarball
+    required: false
+    default: vmd-1.9.4a57.bin.LINUXAMD64-CUDA102-OptiX650-OSPRay185.opengl.tar.gz
+
+  source-directory:
+    description: Top-level directory created when the tarball is extracted
+    required: false
+    default: vmd-1.9.4a57
+
+outputs:
+  cache-hit:
+    description: Whether the VMD installation was restored from cache
+    value: ${{ steps.vmd-cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Generate GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.github-app-id }}
+        private-key: ${{ inputs.github-app-private-key }}
+        owner: ${{ inputs.source-owner }}
+        repositories: ${{ inputs.source-repository }}
+
+    - name: Get VMD tarball SHA
+      id: tarball-sha
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        SOURCE_OWNER: ${{ inputs.source-owner }}
+        SOURCE_REPOSITORY: ${{ inputs.source-repository }}
+        TARBALL_NAME: ${{ inputs.tarball-name }}
+      run: |
+        set -euo pipefail
+
+        api_url="https://api.github.com/repos/${SOURCE_OWNER}/${SOURCE_REPOSITORY}/contents/${TARBALL_NAME}"
+
+        sha="$(
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            "${api_url}" |
+          jq --exit-status --raw-output '.sha'
+        )"
+
+        echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore VMD installation
+      id: vmd-cache
+      uses: actions/cache@v5
+      with:
+        path: ${{ github.workspace }}/.cache/vmd-install
+        key: vmd-install-${{ runner.os }}-${{ runner.arch }}-${{ steps.tarball-sha.outputs.sha }}
+
+    - name: Download and install VMD
+      if: steps.vmd-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        SOURCE_OWNER: ${{ inputs.source-owner }}
+        SOURCE_REPOSITORY: ${{ inputs.source-repository }}
+        TARBALL_NAME: ${{ inputs.tarball-name }}
+        SOURCE_DIRECTORY: ${{ inputs.source-directory }}
+        VMDINSTALLBINDIR: ${{ github.workspace }}/.cache/vmd-install/bin
+        VMDINSTALLLIBRARYDIR: ${{ github.workspace }}/.cache/vmd-install/lib
+      run: |
+        set -euo pipefail
+
+        download_url="https://api.github.com/repos/${SOURCE_OWNER}/${SOURCE_REPOSITORY}/contents/${TARBALL_NAME}"
+        work_directory="${RUNNER_TEMP}/vmd-install"
+
+        rm -rf "${work_directory}"
+        mkdir -p "${work_directory}"
+        mkdir -p "${VMDINSTALLBINDIR}" "${VMDINSTALLLIBRARYDIR}"
+
+        curl --fail-with-body --location --show-error \
+          --header "Authorization: Bearer ${GH_TOKEN}" \
+          --header "Accept: application/vnd.github.raw+json" \
+          --output "${work_directory}/vmd.tar.gz" \
+          "${download_url}"
+
+        tar --extract \
+          --gzip \
+          --file="${work_directory}/vmd.tar.gz" \
+          --directory="${work_directory}"
+
+        cd "${work_directory}/${SOURCE_DIRECTORY}"
+
+        ./configure
+
+        cd src
+        make install
+
+    - name: Add VMD to PATH
+      shell: bash
+      run: |
+        echo "${{ github.workspace }}/.cache/vmd-install/bin" >> "$GITHUB_PATH"
+
+    - name: Verify VMD installation
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        "${{ github.workspace }}/.cache/vmd-install/bin/vmd" \
+          -dispdev text \
+          -e /dev/null
+
+        echo "VMD installation verified."
