@@ -29,7 +29,7 @@ The GitHub App must have permission to read the repository containing the VMD in
 
 ```yaml
 steps:
-  - uses: actions/checkout@v5
+  - uses: actions/checkout@v6
 
   - name: Install system dependencies
     run: |
