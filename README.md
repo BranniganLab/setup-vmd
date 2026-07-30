@@ -28,37 +28,42 @@ The GitHub App must have permission to read the repository containing the VMD in
 ## Usage
 
 ```yaml
-steps:
-  - uses: actions/checkout@v6
+jobs:
+  [your-job-name]:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-  - name: Install system dependencies
-    run: |
-      sudo apt-get update
-      sudo apt-get install -y \
-        build-essential \
-        libx11-dev \
-        libglu1-mesa-dev \
-        libxi-dev \
-        libxext-dev \
-        libxmu-dev \
-        libjpeg-dev \
-        libpng-dev \
-        tcl-dev \
-        tk-dev \
-        python3-dev \
-        flex \
-        bison \
-        git
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libx11-dev \
+            libglu1-mesa-dev \
+            libxi-dev \
+            libxext-dev \
+            libxmu-dev \
+            libjpeg-dev \
+            libpng-dev \
+            tcl-dev \
+            tk-dev \
+            python3-dev \
+            flex \
+            bison \
+            git
 
-  - name: Set up VMD
-    uses: BranniganLab/setup-vmd@ae464c279176585de8a94bd7c7bd11eee4da5783
-    with:
-      github-app-id: ${{ secrets.GH_APP_ID }}
-      github-app-private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+      - name: Set up VMD
+        id: setup-vmd
+        uses: BranniganLab/setup-vmd@ae464c279176585de8a94bd7c7bd11eee4da5783
+        with:
+          github-app-id: ${{ secrets.GH_APP_ID }}
+          github-app-private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
-  - name: Run VMD
-    run: |
-      vmd -dispdev text -e script.tcl
+      - name: Run VMD
+        run: |
+          vmd -dispdev text -e [your-script].tcl
 ```
 
 After the action completes successfully, `vmd` is available on the `PATH` and can be used by all subsequent workflow steps.
